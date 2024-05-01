@@ -1,8 +1,9 @@
 import sys
 sys.path.append('/data07/msurajit/ovro-lwa-solar-ops/')
 import solar_realtime_pipeline as srp
-import logging
+import logging,subprocess
 from astropy.time import Time
+import time
 
 """
     Main routine of running the realtime pipeline. Example call
@@ -24,7 +25,8 @@ parser.add_argument('--nodes', default='0123456789', help='List of nodes to use'
 parser.add_argument('--delay', default=60, help='Delay from current time in seconds')
 parser.add_argument('--server', default=None, help='Name of the server where the raw data is located. Must be defined in ~/.ssh/config.')
 parser.add_argument('--nolustre', default=False, help='If set, do NOT assume that the data are stored under /lustre/pipeline/ in the default tree', action='store_true')
-parser.add_argument('--file_path', default='slow', help='Specify where the raw data is located')
+parser.add_argument('--file_path', default='slow', help='Specify where the raw data is located. Can take either slow, '+\
+				'fast, or slowfast')
 parser.add_argument('--proc_dir', default='/fast/bin.chen/realtime_pipeline/', help='Directory for processing')
 parser.add_argument('--save_dir', default='/lustre/bin.chen/realtime_pipeline/', help='Directory for saving fits files')
 parser.add_argument('--calib_dir', default='/lustre/bin.chen/realtime_pipeline/caltables/', help='Directory to calibration tables')
@@ -44,33 +46,82 @@ parser.add_argument('--bands', '--item', action='store', dest='bands',
                     type=str, nargs='*', 
                     default=['32MHz', '36MHz', '41MHz', '46MHz', '50MHz', '55MHz', '59MHz', '64MHz', '69MHz', '73MHz', '78MHz', '82MHz'],
                     help="Examples: --bands 32MHz 46MHz 64MHz")
-parser.add_argument('--sleep_time', default=0.0, help='Process will sleep for these seconds before doing anything')
 
 args = parser.parse_args()
 
-time.sleep(int(args.sleep_time))
+cmd=['python3','/data07/msurajit/ovro-lwa-solar-ops/pipeline_runner.py']
 
-if len(args.calib_file) == 15:
-    calib_file = args.calib_file
-else:
-    print('Calibration tables not provided or recognized. Attempting to find those from default location on lwacalim.')
-    calib_tables = glob.glob('/lustre/bin.chen/realtime_pipeline/caltables_latest/*.bcal')
-    if len(calib_tables) > 10:
-        calib_file = os.path.basename(calib_tables[0])[:15]
-        print('Using calibration file {0:s}'.format(calib_file))
-    else:
-        print('No calibration files found. Abort.')
-        sys.exit(0)
+arg_vars=vars(args)
+print (type(arg_vars['nolustre']))
+
+for key in arg_vars.keys():
+    if key!='file_path':
+        if (type(arg_vars[key]) != bool):
+            if key!='prefix':
+                cmd.append('--'+key)
+           
+        else:
+            if arg_vars[key]:
+                cmd.append('--'+key)
+                
+        if (type(arg_vars[key]) != bool) and (not isinstance(arg_vars[key],list)):
+            cmd.append(str(arg_vars[key]))
+        elif isinstance(arg_vars[key],list):
+            cmd+=arg_vars[key]
+        
 
 try:
-    srp.run_pipeline(args.prefix, time_end=Time(args.end_time), time_interval=float(args.interval), nodes=args.nodes, \
-                    delay_from_now=float(args.delay), server=args.server, lustre=(not args.nolustre), file_path=args.file_path,\
-                    proc_dir=args.proc_dir, save_dir=args.save_dir, calib_dir=args.calib_dir, calib_file=calib_file, 
-                    altitude_limit=float(args.alt_limit), logger_dir = args.logger_dir, logger_prefix=args.logger_prefix,\
-                    logger_level=int(args.logger_level), do_refra=args.do_refra, 
-                    multinode= (not args.singlenode), delete_working_ms=(not args.keep_working_ms), 
-                    delete_working_fits=(not args.keep_working_fits), beam_fit_size=args.bmfit_sz, do_selfcal=(not args.no_selfcal),\
-                    do_imaging=(not args.no_imaging), bands=args.bands)
+    if 'file_path' in arg_vars.keys():
+        if arg_vars['file_path']!='slowfast':
+            cmd.append('--file_path')
+            cmd.append(str(arg_vars['file_path']))
+            print (cmd)
+            proc1=subprocess.Popen(cmd)
+
+        else:
+            cmd.append('--file_path')
+            cmd.append('slow')
+            print (cmd)
+            proc1=subprocess.Popen(cmd)
+            del cmd[-1]
+            cmd.append('fast')
+            cmd+=['--sleep_time',str(1500)]  ### this will ensure fast always lags slow by 
+                                    #### a large amount.
+            print (cmd)
+            proc2=subprocess.Popen(cmd)
+    else:
+        proc1=subprocess.Popen(cmd)
+        print (cmd)
+    
+    local_vars=locals()
+    if 'proc1' in local_vars or 'proc2' in local_vars:
+        while True:
+            completed=[]
+            polls=[]
+            if 'proc1' in local_vars:
+                polls.append(proc1.poll())
+            if 'proc2' in local_vars:
+                polls.append(proc2.poll())
+            
+            for pol in polls:
+                if pol is None:
+                    completed.append(False)
+                else:
+                    completed.append(True)
+            if not all(val==True for val in completed):
+                time.sleep(10)
+                del polls
+                del completed
+            else:
+                break
+                
 except Exception as e:
-    logging.error(e)
-    raise e
+    raise e 
+finally:
+    local_vars=locals()
+    print (local_vars)
+    if 'proc1' in local_vars:
+        proc1.terminate()
+    if 'proc2' in local_vars:
+        proc2.terminate()
+    print ("terminated")               

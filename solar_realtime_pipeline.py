@@ -524,8 +524,14 @@ def run_imager(msfile_slfcaled, imagedir_allch=None, ephem=None, nch_out=12, sto
         else:
             default_wscleancmd = ("wsclean -j 1 -mem 2 -no-reorder -no-dirty -no-update-model-required -horizon-mask 5deg -size 1024 1024 -scale 1.5arcmin -weight briggs -0.5 -minuv-l 10 -auto-threshold 3 -name " + 
                 helio_imagename + " -niter 10000 -mgain 0.8 -beam-fitting-size " + str(beam_fit_size) + " -pol " + stokes + ' ' + msfile_slfcaled)
- 
-        os.system(default_wscleancmd)
+
+        cmd= shlex.split(default_wscleancmd)
+        
+        try:
+            wsclean_proc=subprocess.run(cmd)
+        except Exception as e:
+            wsclean_proc.terminate()
+            raise e
 
         outfits = glob.glob(helio_imagename + '*-image.fits')
         outfits.sort()
