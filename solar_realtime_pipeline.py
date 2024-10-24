@@ -22,6 +22,7 @@ import astropy.units as u
 from sunpy.coordinates import frames
 from astropy.coordinates import SkyCoord, EarthLocation, get_body, AltAz
 import numpy as np
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib
@@ -479,6 +480,7 @@ def run_calib(msfile, msfiles_cal=None, bcal_tables=None, do_selfcal=True, num_p
             logging.debug("will use "+sky_image)
         
         try:
+            print (caltable_folder)
             outms, tmp = sp.image_ms_quick(msfile, calib_ms=None, bcal=bcal_table, do_selfcal=do_selfcal,\
                                         imagename=imagename, logging_level='info', \
                                         num_phase_cal=num_phase_cal, num_apcal=num_apcal,
@@ -776,7 +778,8 @@ def pipeline_quick(image_time=Time.now() - TimeDelta(20., format='sec'), server=
     # caltable_folder is where the initial bandpass calibration tables are located 
     caltable_folder = calib_dir
     # gaintable_folder is where the intermediate gain tables are located
-    gaintable_folder = proc_dir + '/caltables/'
+    #gaintable_folder = proc_dir + '/caltables/'
+    gaintable_folder= os.path.join(os.path.dirname(os.path.normpath(calib_dir)),'gaintables')
     visdir_calib = proc_dir + '/slow_calib/'
     visdir_work = proc_dir + '/' + slowfast + '_working/'
     visdir_slfcaled = proc_dir + '/' + slowfast + '_slfcaled/'
